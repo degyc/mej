@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>МЕЖПАРАЛЛЕЛЬНО — сцена после пятого разреза</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    height:100%;
+    background:#000;
+    color:#e8e6e1;
+    font-family: "Georgia", "Times New Roman", serif;
+    overflow:hidden;
+    user-select:none;
+    -webkit-user-select:none;
+    transition: background 0.8s ease;
+  }
+  /* Фон под бумагой — fon.png */
+  #bg-fon {
+    position:fixed; inset:0; z-index:0;
+    background:url('fon.png') center / cover no-repeat;
+    opacity:0; transition:opacity 2s ease;
+    pointer-events:none;
+  }
+  #bg-fon.on { opacity:1; }
+  /* Небольшое затемнение перед текстом */
+  #dimmer {
+    position:fixed; inset:0; z-index:15;
+    background:#000; opacity:0; pointer-events:none;
+    transition:opacity 2s ease;
+  }
+  #dimmer.on { opacity:0.55; }
+  /* Стартовый чёрный экран */
+  #intro {
+    position:fixed; inset:0; z-index:100; background:#000;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px;
+    transition:opacity 1.2s ease;
+  }
+  #intro.hidden { opacity:0; pointer-events:none; }
+  #intro h1 { font-weight:400; letter-spacing:0.3em; font-size:clamp(20px,4vw,32px); margin-left:0.3em; opacity:0.9; }
+  #start-text {
+    font-size:15px; letter-spacing:0.35em; margin-left:0.35em; opacity:0.55; font-style:italic;
+    cursor:pointer; padding:12px 20px; transition:opacity 0.3s ease, color 0.3s ease;
+  }
+  #start-text:hover { opacity:1; color:#fff; }
+  body.darker { background:#020202; }
+  #app { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+
+  #top-ui {
+    position:fixed; top:0; left:0; right:0;
+    display:flex; flex-direction:column; align-items:center;
+    padding-top:28px; gap:10px; z-index:20;
+    transition: opacity 1.8s ease;
+  }
+  #top-ui.hidden { opacity:0; pointer-events:none; }
+  #counter { font-size:15px; letter-spacing:0.35em; opacity:0.7; font-family: monospace; }
+  #hint { font-size:14px; opacity:0.45; font-style:italic; letter-spacing:0.05em; transition: opacity 1s ease; }
+
+  #stage { position:relative; z-index:10; display:flex; align-items:center; justify-content:center; width:100%; height:100%; }
+  body.has-scissors #stage, body.has-scissors .sheet, body.has-scissors #cuts-layer { cursor:none; }
+
+  /* Лист — теперь фото bym.png */
+  .sheet {
+    position:relative;
+    width:min(62vh, 80vw, 460px);
+    background:none;
+    box-shadow:none;
+    overflow:visible;
+    touch-action:none;
+    transition: transform 0.6s ease, opacity 1.5s ease;
+  }
+  #paper-photo {
+    width:100%; display:block; pointer-events:none;
+    filter: drop-shadow(0 30px 70px rgba(0,0,0,0.75));
+  }
+  #paper-photo.jolt { animation: jolt 0.18s ease; }
+  @keyframes jolt {
+    0% { transform:translateX(0); } 25% { transform:translateX(-3px) rotate(-0.2deg); }
+    75% { transform:translateX(3px) rotate(0.2deg); } 100% { transform:translateX(0); }
+  }
+  .sheet.alive { animation: breathe 4.2s ease-in-out infinite; }
+  @keyframes breathe {
+    0%   { transform: translateY(0) rotate(0deg) scale(1); }
+    25%  { transform: translateY(-3px) rotate(0.25deg) scale(1.003); }
+    50%  { transform: translateY(2px) rotate(-0.2deg) scale(1.001) skewX(0.15deg); }
+    75%  { transform: translateY(-1px) rotate(0.12deg) scale(1.0025); }
+    100% { transform: translateY(0) rotate(0deg) scale(1); }
+  }
+  .sheet.frozen { animation:none !important; }
+  .sheet.hint-cut { transform: translateX(2px) rotate(0.3deg); }
+  .sheet.gone { opacity:0; }
+
+  /* Зона бумаги внутри фото (подобрано под bym.png: бумага вверху, рука внизу) */
+  #cuts-layer {
+    position:absolute;
+    top:4%; left:19%; width:63%; height:62%;
+    touch-action:none;
+  }
+  .cut {
+    position:absolute; left:0; right:0;
+    height:2px;
+    background:linear-gradient(180deg, #000 0%, #1a1a1a 50%, #000 100%);
+    box-shadow:0 1px 2px rgba(0,0,0,0.6), 0 -1px 0 rgba(255,255,255,0.45);
+    transition: height 2.5s ease, box-shadow 2.5s ease, transform 3s ease;
+  }
+  .sheet.alive .cut { height:2px; box-shadow:0 2px 6px rgba(0,0,0,0.4); }
+  .sheet.cuts-open .cut { height:4px; background:#000; box-shadow:0 3px 10px rgba(0,0,0,0.55), 0 6px 18px rgba(0,0,0,0.3); }
+  .cut.emph { height:5px !important; background:#000 !important; }
+
+  #drag-line {
+    position:absolute; height:2px; background:#111; opacity:0.8;
+    pointer-events:none; display:none; transform-origin:left center;
+    box-shadow:0 1px 3px rgba(0,0,0,0.5);
+  }
+  #v-preview {
+    position:absolute; top:0; bottom:0; width:2px; left:50%;
+    background:rgba(0,0,0,0.5); opacity:0;
+    transition: opacity 0.6s ease; pointer-events:none;
+  }
+  #v-preview.on { opacity:0.35; }
+  .v-cut {
+    position:absolute; top:0; bottom:0; width:3px; left:50%;
+    background:#000; box-shadow:2px 0 8px rgba(0,0,0,0.45);
+    transform:translateX(-50%);
+  }
+
+  /* Ножницы noj.png — летают за курсором */
+  #scissors {
+    position:fixed; left:0; top:0; width:140px; z-index:90;
+    pointer-events:none; display:none;
+    transform:translate(-25%, -75%) rotate(-18deg);
+    filter:drop-shadow(0 10px 14px rgba(0,0,0,0.6));
+  }
+  #scissors.on { display:block; }
+  #scissors.snip { transform:translate(-25%, -75%) rotate(-4deg) scale(0.93); }
+
+  /* Падающие кусочки kyc.png (+ сюда же добавишь новые) */
+  .fall-piece {
+    position:fixed; z-index:80; pointer-events:none;
+    filter:drop-shadow(0 6px 8px rgba(0,0,0,0.5));
+    will-change: transform, opacity;
+  }
+
+  #phase {
+    position:fixed; inset:0; z-index:30;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; pointer-events:none; text-align:center; padding:0 24px;
+  }
+  .fade-text { opacity:0; transition:opacity 2.2s ease; font-size:18px; letter-spacing:0.06em; font-style:italic; color:#fff; text-shadow:0 1px 12px rgba(0,0,0,0.8); }
+  .fade-text.on { opacity:1; }
+  .fade-text.small { font-size:15px; opacity:0; }
+  .fade-text.small.on { opacity:1; }
+  #choice { pointer-events:none; display:flex; flex-direction:column; align-items:center; gap:14px; margin-top:26px; }
+  #choice h1 { font-size:clamp(22px, 4vw, 34px); letter-spacing:0.28em; font-weight:400; margin-left:0.28em; opacity:0; transition:opacity 2.5s ease; color:#fff; text-shadow:0 1px 14px rgba(0,0,0,0.8); }
+  #choice h1.on { opacity:1; }
+  #choice .sub { font-size:14px; font-style:italic; opacity:0; transition:opacity 2s ease; color:#fff; text-shadow:0 1px 10px rgba(0,0,0,0.8); }
+  #choice .sub.on { opacity:1; }
+  #btns { display:flex; gap:48px; margin-top:34px; flex-wrap:wrap; justify-content:center; }
+  #btns button {
+    pointer-events:auto; background:none; border:none; color:#fff;
+    text-shadow:0 1px 12px rgba(0,0,0,0.9);
+    font-family:inherit; font-size:13px; letter-spacing:0.24em;
+    padding:12px 6px; cursor:pointer;
+    opacity:0; transform:translateY(6px);
+    transition:opacity 1.2s ease, transform 1.2s ease, color 0.3s ease;
+    border-bottom:1px solid rgba(255,255,255,0.45);
+  }
+  #btns button.on { opacity:1; transform:translateY(0); }
+  #btns button:hover { color:#fff; border-bottom-color:rgba(255,255,255,0.6); }
+
+  /* Полное затемнение перед треком */
+  #fader { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; transition:opacity 1.1s ease; z-index:45; }
+  #fader.on { opacity:1; }
+
+  /* Скример — теперь твоё scr.png */
+  #screamer { position:fixed; inset:0; z-index:60; display:none; background:#000; align-items:center; justify-content:center; overflow:hidden; }
+  #screamer.on { display:flex; }
+  #scr-img { width:100vw; height:100vh; object-fit:cover; animation:shake 0.07s infinite; filter:contrast(1.15) brightness(1.1); }
+  #screamer .flash { position:absolute; inset:0; background:#fff; opacity:0.12; animation:shake 0.09s infinite; mix-blend-mode:overlay; }
+  @keyframes shake {
+    0% { transform:translate(0,0) skewX(0) scale(1.02); }
+    25% { transform:translate(-12px,8px) skewX(4deg) scale(1.05); }
+    50% { transform:translate(10px,-10px) skewX(-5deg) scale(1.03); }
+    75% { transform:translate(-8px,-6px) scale(1.06); }
+    100% { transform:translate(6px,6px) scale(1.02); }
+  }
+  #black { position:fixed; inset:0; background:#000; z-index:55; opacity:0; pointer-events:none; transition:opacity 0.4s ease; }
+  #black.on { opacity:1; pointer-events:auto; }
+
+  #music {
+    position:fixed; inset:0; z-index:50; display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:22px;
+    background:radial-gradient(ellipse at center, #161619 0%, #050505 70%);
+    text-align:center; padding:24px;
+    opacity:0; transition:opacity 1.2s ease;
+  }
+  #music.on { display:flex; }
+  #music.show { opacity:1; }
+  #cover {
+    width:min(56vw, 300px); aspect-ratio:1/1; object-fit:cover; display:block;
+    box-shadow:0 18px 60px rgba(0,0,0,0.7);
+  }
+  #music .artist { letter-spacing:0.4em; font-size:13px; opacity:0.6; margin-left:0.4em; }
+  #music h2 { letter-spacing:0.4em; font-weight:400; font-size:clamp(18px,3vw,28px); margin-left:0.4em; }
+  #music button { background:none; border:1px solid rgba(255,255,255,0.25); color:#fff; padding:12px 34px; letter-spacing:0.2em; font-family:inherit; cursor:pointer; }
+  #music button:hover { border-color:#fff; }
+  #eq { display:flex; gap:4px; height:28px; align-items:flex-end; opacity:0.7; }
+  #eq span { width:3px; background:#fff; height:6px; }
+  #eq.playing span { animation:eq 0.7s ease-in-out infinite alternate; }
+  #eq span:nth-child(2){ animation-delay:0.15s !important; } #eq span:nth-child(3){ animation-delay:0.3s !important; }
+  #eq span:nth-child(4){ animation-delay:0.1s !important; } #eq span:nth-child(5){ animation-delay:0.4s !important; }
+  @keyframes eq { from{height:4px} to{height:26px} }
+</style>
+</head>
+<body>
+<div id="bg-fon"></div>
+<div id="dimmer"></div>
+<div id="intro">
+  <h1>начать игру</h1>
+  <div id="start-text">старт</div>
+</div>
+<div id="app">
+  <div id="top-ui" class="hidden">
+    <div id="counter">0 / 5</div>
+    <div id="hint">режь — веди через лист, параллельно. пять раз.</div>
+  </div>
+  <div id="stage">
+    <div class="sheet" id="sheet">
+      <img id="paper-photo" src="bym.png" alt="бумага" draggable="false">
+      <div id="cuts-layer">
+        <div id="drag-line"></div>
+        <div id="v-preview"></div>
+      </div>
+    </div>
+  </div>
+  <div id="phase">
+    <div class="fade-text" id="t1">ты можешь остановиться</div>
+    <div class="fade-text small" id="t2">или разрезать иначе</div>
+    <div id="choice">
+      <h1 id="q">МЕЖПАРАЛЛЕЛЬНО?</h1>
+      <div class="sub" id="qsub">один раз. поперёк.</div>
+      <div id="btns">
+        <button id="btn-cut">ПОРЕЗАТЬ</button>
+        <button id="btn-nocut">НЕ РЕЗАТЬ</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<img id="scissors" alt="ножницы">
+
+<div id="fader"></div>
+<div id="black"></div>
+<div id="screamer"><img id="scr-img" src="scr.png" alt=""><div class="flash"></div></div>
+
+<div id="music">
+  <img id="cover" src="foto.jpg" alt="межпараллельный — нет имени" draggable="false">
+  <div class="artist">межпараллельный</div>
+  <h2>нет имени</h2>
+  <div id="eq"><span></span><span></span><span></span><span></span><span></span></div>
+  <audio id="track" src="net_imeni.mp3" preload="auto" loop></audio>
+  <button id="play">СЛУШАТЬ</button>
+</div>
+
+<script>
+const sheet = document.getElementById('sheet');
+const paperPhoto = document.getElementById('paper-photo');
+const cutsLayer = document.getElementById('cuts-layer');
+const counterEl = document.getElementById('counter');
+const hintEl = document.getElementById('hint');
+const topUI = document.getElementById('top-ui');
+const dragLine = document.getElementById('drag-line');
+const vPreview = document.getElementById('v-preview');
+const scissorsEl = document.getElementById('scissors');
+const t1 = document.getElementById('t1');
+const t2 = document.getElementById('t2');
+const q = document.getElementById('q');
+const qsub = document.getElementById('qsub');
+const btnCut = document.getElementById('btn-cut');
+const btnNoCut = document.getElementById('btn-nocut');
+const fader = document.getElementById('fader');
+const black = document.getElementById('black');
+const screamer = document.getElementById('screamer');
+const music = document.getElementById('music');
+const playBtn = document.getElementById('play');
+const eq = document.getElementById('eq');
+const intro = document.getElementById('intro');
+const startText = document.getElementById('start-text');
+const bgFon = document.getElementById('bg-fon');
+const dimmer = document.getElementById('dimmer');
+const track = document.getElementById('track');
+
+// Сюда добавляй новые кусочки: ['kyc.png','kyc2.png',...]
+const PIECE_FILES = ['kyc.png'];
+
+let cuts = [];
+let vCut = null;
+let mode = 'idle'; // idle до нажатия «старт»
+let drag = null;
+let started = false;
+let audioCtx = null, humNodes = null;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// --- убрать белый фон у noj.png через canvas, чтобы ножницы были без коробки ---
+function keyOutWhite(src){
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img,0,0);
+        const id = ctx.getImageData(0,0,c.width,c.height);
+        const d = id.data;
+        for(let i=0;i<d.length;i+=4){
+          const r=d[i],g=d[i+1],b=d[i+2];
+          // почти белый -> прозрачный, около-белый -> полупрозрачный (мягкий край)
+          if(r>238&&g>238&&b>238){ d[i+3]=0; }
+          else if(r>218&&g>218&&b>218){ d[i+3]=Math.max(0,(255-Math.max(r,g,b))*4); }
+        }
+        ctx.putImageData(id,0,0);
+        resolve(c.toDataURL());
+      }catch(e){ resolve(src); }
+    };
+    img.onerror = ()=>resolve(src);
+    img.src = src;
+  });
+}
+keyOutWhite('noj.png').then(url=>{ scissorsEl.src = url; });
+
+// --- ножницы следуют за курсором ---
+window.addEventListener('pointermove', e=>{
+  if((mode==='parallel'||mode==='transverse') && started){
+    scissorsEl.classList.add('on');
+    document.body.classList.add('has-scissors');
+    scissorsEl.style.left = e.clientX+'px';
+    scissorsEl.style.top = e.clientY+'px';
+  } else {
+    scissorsEl.classList.remove('on');
+    document.body.classList.remove('has-scissors');
+  }
+});
+function refreshScissors(){
+  if((mode==='parallel'||mode==='transverse') && started){
+    scissorsEl.classList.add('on'); document.body.classList.add('has-scissors');
+  } else {
+    scissorsEl.classList.remove('on'); document.body.classList.remove('has-scissors');
+    scissorsEl.classList.remove('snip');
+  }
+}
+// Старт: чёрный экран -> фон fon.png -> можно резать
+startText.addEventListener('click', ()=>{
+  ensureAudio();
+  started = true;
+  intro.classList.add('hidden');
+  bgFon.classList.add('on');
+  topUI.classList.remove('hidden');
+  mode = 'parallel';
+  refreshScissors();
+});
+
+// --- звук ---
+function ensureAudio(){
+  if(!audioCtx){ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+function cutSound(){
+  if(!audioCtx) return;
+  const dur=0.22, sr=audioCtx.sampleRate;
+  const buf=audioCtx.createBuffer(1, sr*dur, sr);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++){ d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2); }
+  const src=audioCtx.createBufferSource(); src.buffer=buf;
+  const f=audioCtx.createBiquadFilter(); f.type='highpass'; f.frequency.value=1500;
+  const g=audioCtx.createGain(); g.gain.value=0.3;
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination); src.start();
+}
+function startHum(){
+  if(!audioCtx || humNodes) return;
+  const o=audioCtx.createOscillator(); o.type='sine'; o.frequency.value=46;
+  const o2=audioCtx.createOscillator(); o2.type='sine'; o2.frequency.value=92.5;
+  const g=audioCtx.createGain(); g.gain.value=0.0;
+  g.gain.linearRampToValueAtTime(0.018, audioCtx.currentTime+3);
+  const g2=audioCtx.createGain(); g2.gain.value=0.4;
+  o.connect(g2); o2.connect(g2); g2.connect(g); g.connect(audioCtx.destination);
+  o.start(); o2.start();
+  humNodes={o,o2,g};
+}
+function stopHum(){
+  if(!humNodes) return;
+  const {o,o2,g}=humNodes;
+  try{ g.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime+0.4); setTimeout(()=>{o.stop();o2.stop();},600);}catch(e){}
+  humNodes=null;
+}
+function screamerSound(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  const o=audioCtx.createOscillator(); o.type='sawtooth';
+  o.frequency.setValueAtTime(1800,t); o.frequency.exponentialRampToValueAtTime(80,t+0.5);
+  const g=audioCtx.createGain(); g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.6);
+  o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t+0.65);
+  const sr=audioCtx.sampleRate, buf=audioCtx.createBuffer(1,sr*0.5,sr), d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*0.9;
+  const s=audioCtx.createBufferSource(); s.buffer=buf;
+  const ng=audioCtx.createGain(); ng.gain.value=0.5;
+  s.connect(ng); ng.connect(audioCtx.destination); s.start(t);
+}
+function musicDrone(){
+  if(!audioCtx) return;
+  [110,138.59,164.81,220].forEach((f,i)=>{
+    const o=audioCtx.createOscillator(); o.type='sine'; o.frequency.value=f;
+    const g=audioCtx.createGain(); g.gain.value=0.0;
+    g.gain.linearRampToValueAtTime(0.05, audioCtx.currentTime+2+i*0.5);
+    o.connect(g); g.connect(audioCtx.destination); o.start();
+  });
+}
+
+// --- падающие кусочки: как будто бумага правда режется ---
+function spawnPiece(clientX, clientY, big=false){
+  const src = PIECE_FILES[Math.floor(Math.random()*PIECE_FILES.length)];
+  const img = document.createElement('img');
+  img.src = src; img.className='fall-piece'; img.draggable=false;
+  const size = big ? 70+Math.random()*90 : 34+Math.random()*62;
+  img.style.width = size+'px';
+  img.style.left = (clientX-size/2)+'px';
+  img.style.top = (clientY-size/4)+'px';
+  document.body.appendChild(img);
+  let x=clientX, y=clientY, vx=(Math.random()-0.5)*2.2, vy=0.6+Math.random()*1.4;
+  let rot=Math.random()*360, vr=(Math.random()-0.5)*12, life=0, op=1;
+  const wob=Math.random()*10;
+  function step(){
+    life+=1/60; vy+=0.09; x+=vx+Math.sin(life*6)*0.4; y+=vy; rot+=vr;
+    if(life>0.9) op-=0.035;
+    img.style.transform=`translate(${x-clientX}px,${y-clientY}px) rotate(${rot}deg)`;
+    img.style.opacity=Math.max(0,op);
+    if(op<=0||y>window.innerHeight+120){ img.remove(); return; }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function burstAlongHorizontal(yNorm, n=3){
+  const r=cutsLayer.getBoundingClientRect();
+  const y=r.top+yNorm*r.height;
+  for(let i=0;i<n;i++){
+    const x=r.left+(0.2+0.6*(i/(n-1||1))+ (Math.random()-0.5)*0.08)*r.width;
+    setTimeout(()=>spawnPiece(x,y), i*90);
+  }
+}
+function burstAlongVertical(xNorm, n=4){
+  const r=cutsLayer.getBoundingClientRect();
+  const x=r.left+xNorm*r.width;
+  for(let i=0;i<n;i++){
+    const y=r.top+(0.15+0.7*(i/(n-1)))*r.height;
+    setTimeout(()=>spawnPiece(x,y), i*80);
+  }
+}
+function bigBurst(n=10){
+  const r=cutsLayer.getBoundingClientRect();
+  for(let i=0;i<n;i++){
+    const x=r.left+Math.random()*r.width, y=r.top+Math.random()*r.height;
+    setTimeout(()=>spawnPiece(x,y,true), i*70);
+  }
+}
+
+function updateCounter(){ counterEl.textContent = `${cuts.length} / 5`; }
+function joltPaper(){
+  paperPhoto.classList.remove('jolt'); void paperPhoto.offsetWidth;
+  paperPhoto.classList.add('jolt');
+}
+
+// --- резка: координаты считаем от cuts-layer (бумага внутри фото) ---
+cutsLayer.addEventListener('pointerdown', e=>{
+  ensureAudio();
+  if(mode!=='parallel' && mode!=='transverse') return;
+  e.stopPropagation();
+  try{ cutsLayer.setPointerCapture(e.pointerId); }catch(err){}
+  const r=cutsLayer.getBoundingClientRect();
+  drag={x0:e.clientX-r.left, y0:e.clientY-r.top, x1:e.clientX-r.left, y1:e.clientY-r.top, cx0:e.clientX, cy0:e.clientY};
+  dragLine.style.display='block';
+  scissorsEl.classList.add('snip');
+  paintDrag();
+});
+cutsLayer.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  const r=cutsLayer.getBoundingClientRect();
+  drag.x1=e.clientX-r.left; drag.y1=e.clientY-r.top;
+  scissorsEl.style.left=e.clientX+'px'; scissorsEl.style.top=e.clientY+'px';
+  paintDrag();
+});
+window.addEventListener('pointerup', e=>{
+  scissorsEl.classList.remove('snip');
+  if(!drag) return;
+  const r=cutsLayer.getBoundingClientRect();
+  const {x0,y0,x1,y1}=drag;
+  drag=null; dragLine.style.display='none';
+  const dx=x1-x0, dy=y1-y0;
+  const len=Math.hypot(dx,dy);
+  if(mode==='parallel'){
+    const w=r.width, h=r.height;
+    if(len < w*0.6) return;
+    const ang=Math.abs(Math.atan2(dy,dx)*180/Math.PI);
+    if(Math.min(ang,180-ang) > 15) return;
+    const yNorm=((y0+y1)/2)/h;
+    if(yNorm<0.05||yNorm>0.95) return;
+    const minX=Math.min(x0,x1), maxX=Math.max(x0,x1);
+    if(!(minX < w*0.25 && maxX > w*0.75)) return;
+    for(const c of cuts){ if(Math.abs(c.y-yNorm)*h < 30) return; }
+    addParallelCut(yNorm, r);
+  } else if(mode==='transverse'){
+    const w=r.width, h=r.height;
+    if(len < h*0.6) return;
+    const ang=Math.abs(Math.atan2(dy,dx)*180/Math.PI);
+    if(Math.abs(ang-90) > 15) return;
+    const xNorm=((x0+x1)/2)/w;
+    if(xNorm<0.08||xNorm>0.92) return;
+    const minY=Math.min(y0,y1), maxY=Math.max(y0,y1);
+    if(!(minY < h*0.22 && maxY > h*0.78)) return;
+    addTransverseCut(xNorm, r);
+  }
+});
+function paintDrag(){
+  const dx=drag.x1-drag.x0, dy=drag.y1-drag.y0;
+  const len=Math.hypot(dx,dy);
+  const ang=Math.atan2(dy,dx)*180/Math.PI;
+  dragLine.style.left=drag.x0+'px'; dragLine.style.top=drag.y0+'px';
+  dragLine.style.width=len+'px'; dragLine.style.transform=`rotate(${ang}deg)`;
+}
+function addParallelCut(yNorm, layerRect){
+  const el=document.createElement('div');
+  el.className='cut'; el.style.top=(yNorm*100)+'%';
+  el.style.transitionDelay=(cuts.length*0.08)+'s';
+  cutsLayer.appendChild(el);
+  cuts.push({y:yNorm, el});
+  cutSound(); joltPaper();
+  // кусочки падают с линии разреза — как будто реально отрезалось
+  const r=layerRect||cutsLayer.getBoundingClientRect();
+  const y=r.top+yNorm*r.height;
+  const xs=[0.28,0.52,0.74];
+  xs.forEach((f,i)=>setTimeout(()=>spawnPiece(r.left+f*r.width+(Math.random()-0.5)*20, y), i*90));
+  updateCounter();
+  if(cuts.length>=5){ onFifth(); }
+}
+function addTransverseCut(xNorm, layerRect){
+  if(vCut) return;
+  mode='done'; refreshScissors();
+  const el=document.createElement('div');
+  el.className='v-cut'; el.style.left=(xNorm*100)+'%';
+  cutsLayer.appendChild(el);
+  vCut={x:xNorm, el};
+  cutSound(); joltPaper();
+  burstAlongVertical(xNorm, 5);
+  setTimeout(openSheet, 800);
+}
+
+// --- сцена после пятого ---
+async function onFifth(){
+  mode='locked'; refreshScissors();
+  updateCounter();
+  await sleep(900);
+  topUI.classList.add('hidden');
+  await sleep(600);
+  await sleep(1000);
+  sheet.classList.add('alive');
+  startHum();
+  cuts.forEach((c,i)=>{ setTimeout(()=>{ c.el.style.transform=`translateY(${(i%2?-1:1)*1.5}px)`; }, i*220); });
+  await sleep(2100);
+  sheet.classList.add('cuts-open');
+  // пара пылинок-кусочков сыплется сама — «внутри что-то происходит»
+  burstAlongHorizontal(cuts[2]?cuts[2].y:0.5, 2);
+  await sleep(1200);
+  sheet.classList.remove('alive');
+  sheet.classList.add('frozen');
+  stopHum();
+  await sleep(800);
+  // небольшое затемнение перед появлением текста
+  dimmer.classList.add('on');
+  await sleep(1200);
+  t1.classList.add('on');
+  await sleep(1800);
+  t2.classList.add('on');
+  await sleep(1600);
+  q.classList.add('on');
+  await sleep(900);
+  qsub.classList.add('on');
+  await sleep(800);
+  btnCut.classList.add('on');
+  await sleep(450);
+  btnNoCut.classList.add('on');
+}
+
+btnCut.addEventListener('mouseenter', ()=>{
+  ensureAudio();
+  sheet.classList.add('hint-cut');
+  vPreview.classList.add('on');
+  if(cuts[2]) cuts[2].el.classList.add('emph');
+});
+btnCut.addEventListener('mouseleave', ()=>{
+  sheet.classList.remove('hint-cut');
+  vPreview.classList.remove('on');
+  if(cuts[2]) cuts[2].el.classList.remove('emph');
+});
+btnNoCut.addEventListener('mouseenter', ()=>{
+  document.body.classList.add('darker');
+  sheet.classList.add('frozen');
+  stopHum();
+});
+btnNoCut.addEventListener('mouseleave', ()=>{ document.body.classList.remove('darker'); });
+
+btnCut.addEventListener('click', async ()=>{
+  ensureAudio();
+  btnCut.classList.remove('on'); btnNoCut.classList.remove('on');
+  q.classList.remove('on'); qsub.classList.remove('on');
+  t1.classList.remove('on'); t2.classList.remove('on');
+  document.body.classList.remove('darker');
+  dimmer.classList.remove('on');
+  await sleep(700);
+  mode='transverse'; refreshScissors();
+  hintEl.textContent='один раз. поперёк.';
+  hintEl.style.opacity=0.6;
+  topUI.classList.remove('hidden');
+  counterEl.textContent='—';
+  vPreview.classList.add('on');
+  setTimeout(()=>{ if(mode==='transverse') vPreview.classList.remove('on'); }, 1200);
+});
+
+// Плавное нарастание громкости трека 0 -> 0.9
+function rampTrackVolume(durMs=2500){
+  return new Promise(resolve=>{
+    try{ track.volume = 0; }catch(e){}
+    const steps = 50, stepMs = durMs/steps;
+    let i = 0;
+    const iv = setInterval(()=>{
+      i++;
+      try{ track.volume = Math.min(0.9, (i/steps)*0.9); }catch(e){}
+      if(i>=steps){ clearInterval(iv); resolve(); }
+    }, stepMs);
+  });
+}
+async function openSheet(){
+  vPreview.classList.remove('on');
+  topUI.classList.add('hidden');
+  dimmer.classList.remove('on');
+  refreshScissors();
+  sheet.classList.add('cuts-open');
+  bigBurst(12); // бумага наконец рвётся — куски летят
+  // пауза 1 секунда: разрез виден, тишина
+  await sleep(1000);
+  // полное затемнение
+  fader.classList.add('on');
+  await sleep(1200);
+  // начало трека на чёрном, громкость нарастает
+  try{
+    const p = track.play();
+    if(p && p.catch) p.catch(()=>{});
+  }catch(e){}
+  setPlayingUI(true);
+  await rampTrackVolume(2500);
+  // холд чёрного на нормальной громкости
+  await sleep(1000);
+  showMusic();
+}
+
+btnNoCut.addEventListener('click', async ()=>{
+  ensureAudio();
+  btnCut.classList.remove('on'); btnNoCut.classList.remove('on');
+  q.classList.remove('on'); qsub.classList.remove('on');
+  t1.classList.remove('on'); t2.classList.remove('on');
+  await sleep(1600);
+  screamer.classList.add('on');
+  screamerSound();
+  await sleep(650);
+  screamer.classList.remove('on');
+  black.classList.add('on');
+  stopHum();
+  await sleep(1000);
+  t1.textContent='всё равно пришлось';
+  t1.classList.add('on');
+  await sleep(1800);
+  t1.classList.remove('on');
+  await sleep(600);
+  showMusic(true);
+});
+
+function showMusic(fromNoCut=false){
+  if(fromNoCut){ fader.classList.add('on'); } // чёрная подложка под проявлением
+  black.classList.remove('on');
+  dimmer.classList.remove('on');
+  sheet.classList.add('gone');
+  scissorsEl.classList.remove('on');
+  music.classList.add('on');
+  // медленное проявление окна трека
+  requestAnimationFrame(()=>requestAnimationFrame(()=>music.classList.add('show')));
+  if(fromNoCut){
+    // ветка «НЕ РЕЗАТЬ»: трек стартует здесь же
+    try{ track.volume = 0.9; track.play().then(()=>setPlayingUI(true)).catch(()=>setPlayingUI(false)); }catch(e){}
+  }
+  // ветка разреза: fader гаснет, открывая уже проявленное окно
+  setTimeout(()=>fader.classList.remove('on'), 400);
+}
+function setPlayingUI(playing){
+  eq.classList.toggle('playing', playing);
+  playBtn.textContent = playing ? 'ПАУЗА' : 'СЛУШАТЬ';
+}
+playBtn.addEventListener('click', ()=>{
+  ensureAudio();
+  if(track.paused){ track.play(); setPlayingUI(true); }
+  else { track.pause(); setPlayingUI(false); }
+});
+track.addEventListener('play', ()=>setPlayingUI(true));
+track.addEventListener('pause', ()=>setPlayingUI(false));
+refreshScissors();
+</script>
+</body>
+</html>
