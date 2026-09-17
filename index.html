@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>МЕЖПАРАЛЛЕЛЬНО — сцена после пятого разреза</title>
+<title>Ножницы и бумага</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body {
@@ -205,6 +205,8 @@
   #music h2 { letter-spacing:0.4em; font-weight:400; font-size:clamp(18px,3vw,28px); margin-left:0.4em; }
   #music button { background:none; border:1px solid rgba(255,255,255,0.25); color:#fff; padding:12px 34px; letter-spacing:0.2em; font-family:inherit; cursor:pointer; }
   #music button:hover { border-color:#fff; }
+  #artist-link { font-size:13px; font-style:italic; letter-spacing:0.12em; color:#fff; opacity:0.45; text-decoration:none; border-bottom:1px solid rgba(255,255,255,0.3); padding-bottom:2px; transition:opacity 0.3s ease, border-color 0.3s ease; }
+  #artist-link:hover { opacity:1; border-bottom-color:#fff; }
   #eq { display:flex; gap:4px; height:28px; align-items:flex-end; opacity:0.7; }
   #eq span { width:3px; background:#fff; height:6px; }
   #eq.playing span { animation:eq 0.7s ease-in-out infinite alternate; }
@@ -222,8 +224,8 @@
 </div>
 <div id="app">
   <div id="top-ui" class="hidden">
-    <div id="counter">0 / 5</div>
-    <div id="hint">режь — веди через лист, параллельно. пять раз.</div>
+    <div id="counter">0 / 4</div>
+    <div id="hint">режь — веди через лист, параллельно. четыре раза.</div>
   </div>
   <div id="stage">
     <div class="sheet" id="sheet">
@@ -238,7 +240,6 @@
     <div class="fade-text" id="t1">ты можешь остановиться</div>
     <div class="fade-text small" id="t2">или разрезать иначе</div>
     <div id="choice">
-      <h1 id="q">МЕЖПАРАЛЛЕЛЬНО?</h1>
       <div class="sub" id="qsub">один раз. поперёк.</div>
       <div id="btns">
         <button id="btn-cut">ПОРЕЗАТЬ</button>
@@ -261,6 +262,7 @@
   <div id="eq"><span></span><span></span><span></span><span></span><span></span></div>
   <audio id="track" src="net_imeni.mp3" preload="auto" loop></audio>
   <button id="play">СЛУШАТЬ</button>
+  <a id="artist-link" href="https://band.link/mejparallel" target="_blank" rel="noopener">исполнитель — band.link/mejparallel</a>
 </div>
 
 <script>
@@ -275,7 +277,6 @@ const vPreview = document.getElementById('v-preview');
 const scissorsEl = document.getElementById('scissors');
 const t1 = document.getElementById('t1');
 const t2 = document.getElementById('t2');
-const q = document.getElementById('q');
 const qsub = document.getElementById('qsub');
 const btnCut = document.getElementById('btn-cut');
 const btnNoCut = document.getElementById('btn-nocut');
@@ -464,7 +465,7 @@ function bigBurst(n=10){
   }
 }
 
-function updateCounter(){ counterEl.textContent = `${cuts.length} / 5`; }
+function updateCounter(){ counterEl.textContent = `${cuts.length} / 4`; }
 function joltPaper(){
   paperPhoto.classList.remove('jolt'); void paperPhoto.offsetWidth;
   paperPhoto.classList.add('jolt');
@@ -540,7 +541,7 @@ function addParallelCut(yNorm, layerRect){
   const xs=[0.28,0.52,0.74];
   xs.forEach((f,i)=>setTimeout(()=>spawnPiece(r.left+f*r.width+(Math.random()-0.5)*20, y), i*90));
   updateCounter();
-  if(cuts.length>=5){ onFifth(); }
+  if(cuts.length>=4){ onFourth(); }
 }
 function addTransverseCut(xNorm, layerRect){
   if(vCut) return;
@@ -554,8 +555,8 @@ function addTransverseCut(xNorm, layerRect){
   setTimeout(openSheet, 800);
 }
 
-// --- сцена после пятого ---
-async function onFifth(){
+// --- сцена после четвёртого ---
+async function onFourth(){
   mode='locked'; refreshScissors();
   updateCounter();
   await sleep(900);
@@ -568,7 +569,7 @@ async function onFifth(){
   await sleep(2100);
   sheet.classList.add('cuts-open');
   // пара пылинок-кусочков сыплется сама — «внутри что-то происходит»
-  burstAlongHorizontal(cuts[2]?cuts[2].y:0.5, 2);
+  burstAlongHorizontal(cuts[1]?cuts[1].y:0.5, 2);
   await sleep(1200);
   sheet.classList.remove('alive');
   sheet.classList.add('frozen');
@@ -581,8 +582,6 @@ async function onFifth(){
   await sleep(1800);
   t2.classList.add('on');
   await sleep(1600);
-  q.classList.add('on');
-  await sleep(900);
   qsub.classList.add('on');
   await sleep(800);
   btnCut.classList.add('on');
@@ -611,7 +610,7 @@ btnNoCut.addEventListener('mouseleave', ()=>{ document.body.classList.remove('da
 btnCut.addEventListener('click', async ()=>{
   ensureAudio();
   btnCut.classList.remove('on'); btnNoCut.classList.remove('on');
-  q.classList.remove('on'); qsub.classList.remove('on');
+  qsub.classList.remove('on');
   t1.classList.remove('on'); t2.classList.remove('on');
   document.body.classList.remove('darker');
   dimmer.classList.remove('on');
@@ -662,25 +661,40 @@ async function openSheet(){
   showMusic();
 }
 
+// Возврат в начало без экрана "начать игру": сразу можно резать заново
+function resetGame(){
+  stopHum();
+  cuts.forEach(c=>{ try{ c.el.remove(); }catch(e){} });
+  cuts = [];
+  if(vCut){ try{ vCut.el.remove(); }catch(e){} vCut = null; }
+  cutsLayer.querySelectorAll('.cut,.v-cut').forEach(e=>e.remove());
+  sheet.classList.remove('alive','frozen','cuts-open','gone','hint-cut');
+  vPreview.classList.remove('on');
+  dimmer.classList.remove('on');
+  document.body.classList.remove('darker');
+  t1.classList.remove('on'); t2.classList.remove('on');
+  qsub.classList.remove('on');
+  btnCut.classList.remove('on'); btnNoCut.classList.remove('on');
+  // сброс трансформаций разрезов (на случай повторной игры)
+  updateCounter();
+  hintEl.textContent='режь — веди через лист, параллельно. четыре раза.';
+  hintEl.style.opacity='';
+  topUI.classList.remove('hidden');
+  mode='parallel';
+  refreshScissors();
+}
+
 btnNoCut.addEventListener('click', async ()=>{
   ensureAudio();
   btnCut.classList.remove('on'); btnNoCut.classList.remove('on');
-  q.classList.remove('on'); qsub.classList.remove('on');
+  qsub.classList.remove('on');
   t1.classList.remove('on'); t2.classList.remove('on');
-  await sleep(1600);
-  screamer.classList.add('on');
-  screamerSound();
-  await sleep(650);
-  screamer.classList.remove('on');
-  black.classList.add('on');
-  stopHum();
-  await sleep(1000);
-  t1.textContent='всё равно пришлось';
-  t1.classList.add('on');
-  await sleep(1800);
-  t1.classList.remove('on');
-  await sleep(600);
-  showMusic(true);
+  // короткое затемнение и сразу новая игра, без "начать игру" / "старт"
+  fader.classList.add('on');
+  await sleep(900);
+  resetGame();
+  await sleep(200);
+  fader.classList.remove('on');
 });
 
 function showMusic(fromNoCut=false){
